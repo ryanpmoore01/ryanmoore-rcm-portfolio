@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Prior Auth Compliance Checker</title>
+
+  <!-- Syne: geometric display for headings | Source Sans 3: clinical, legible body -->
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Source+Sans+3:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ─── Design tokens ───────────────────────────────────── */
+    :root {
+      --ink:       #0a1628;
+      --navy:      #0d2347;
+      --cobalt:    #1446a0;
+      --sky:       #2d7dd2;
+      --ice:       #ddeeff;
+      --bg:        #f2f6fc;
+      --card:      #ffffff;
+      --border:    #d4e0f0;
+      --muted:     #6b7c99;
+      --pass-bg:   #eafaf3;
+      --pass-clr:  #0d6e46;
+      --pass-brd:  #86e0b8;
+      --fail-bg:   #fef2f2;
+      --fail-clr:  #991b1b;
+      --fail-brd:  #fca5a5;
+      --warn-bg:   #fffbeb;
+      --warn-clr:  #92400e;
+      --warn-brd:  #fcd34d;
+      --radius:    12px;
+      --shadow:    0 4px 24px rgba(10,22,40,.10);
+    }
+
+    /* ─── Reset ───────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Source Sans 3', sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+      /* Subtle graph-paper texture */
+      background-image:
+        linear-gradient(rgba(20,70,160,.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(20,70,160,.04) 1px, transparent 1px);
+      background-size: 32px 32px;
+    }
+
+    /* ─── Header ──────────────────────────────────────────── */
+    header {
+      background: var(--navy);
+      padding: 0 32px;
+      display: flex;
+      align-items: stretch;
+      gap: 0;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Decorative angled accent strip */
+    header::after {
+      content: '';
+      position: absolute;
+      right: -40px; top: 0; bottom: 0;
+      width: 220px;
+      background: linear-gradient(135deg, var(--cobalt) 0%, var(--sky) 100%);
+      transform: skewX(-12deg);
+      opacity: .35;
+    }
+
+    .header-inner {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 20px 0;
+      z-index: 1;
+    }
+
+    .logo-mark {
+      width: 44px; height: 44px;
+      background: linear-gradient(135deg, var(--sky), #5ba8ff);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .logo-mark svg { width: 24px; height: 24px; fill: none; stroke: #fff; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+    .header-text h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: .01em;
+    }
+    .header-text p {
+      font-size: .8rem;
+      color: rgba(255,255,255,.55);
+      margin-top: 2px;
+    }
+
+    /* CMS badge */
+    .cms-badge {
+      margin-left: auto;
+      z-index: 1;
+      background: rgba(255,255,255,.1);
+      border: 1px solid rgba(255,255,255,.18);
+      color: rgba(255,255,255,.8);
+      font-size: .72rem;
+      font-weight: 600;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      padding: 5px 12px;
+      border-radius: 20px;
+    }
+
+    /* ─── Main layout ─────────────────────────────────────── */
+    main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 36px 20px 60px;
+    }
+
+    /* ─── Form card ───────────────────────────────────────── */
+    .form-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 32px 36px 36px;
+      border: 1px solid var(--border);
+      animation: fadeUp .4s ease both;
+    }
+
+    .form-card h2 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--cobalt);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .form-card h2::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* 2-column grid for inputs */
+    .fields-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px 24px;
+    }
+    @media (max-width: 580px) {
+      .fields-grid { grid-template-columns: 1fr; }
+      .form-card { padding: 24px 20px; }
+    }
+
+    /* Individual field */
+    .field label {
+      display: block;
+      font-size: .8rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-bottom: 7px;
+    }
+
+    .field input,
+    .field select {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 9px;
+      font-family: inherit;
+      font-size: .95rem;
+      color: var(--ink);
+      background: #fff;
+      transition: border-color .18s, box-shadow .18s;
+      outline: none;
+      appearance: none;
+    }
+    .field input:focus,
+    .field select:focus {
+      border-color: var(--sky);
+      box-shadow: 0 0 0 3px rgba(45,125,210,.12);
+    }
+    .field input::placeholder { color: #b0bdd0; }
+
+    /* Select arrow */
+    .select-wrap { position: relative; }
+    .select-wrap::after {
+      content: '▾';
+      position: absolute;
+      right: 13px; top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      pointer-events: none;
+      font-size: .85rem;
+    }
+
+    /* ─── Submit button ───────────────────────────────────── */
+    .btn-check {
+      margin-top: 26px;
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, var(--cobalt) 0%, var(--sky) 100%);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-family: 'Syne', sans-serif;
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: .04em;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: opacity .15s, transform .12s, box-shadow .15s;
+      box-shadow: 0 4px 16px rgba(20,70,160,.28);
+    }
+    .btn-check:hover {
+      opacity: .92;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 22px rgba(20,70,160,.36);
+    }
+    .btn-check:active { transform: translateY(0); }
+    .btn-check svg { width: 18px; height: 18px; stroke: #fff; fill: none; stroke-width: 2.3; stroke-linecap: round; }
+
+    /* ─── Result panel ────────────────────────────────────── */
+    #result-panel {
+      margin-top: 24px;
+      animation: fadeUp .35s ease both;
+    }
+
+    /* Status banner */
+    .status-banner {
+      border-radius: var(--radius) var(--radius) 0 0;
+      padding: 20px 28px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .status-banner.pass { background: var(--pass-bg); border: 1.5px solid var(--pass-brd); border-bottom: none; }
+    .status-banner.fail { background: var(--fail-bg); border: 1.5px solid var(--fail-brd); border-bottom: none; }
+    .status-banner.warn { background: var(--warn-bg); border: 1.5px solid var(--warn-brd); border-bottom: none; }
+
+    .status-icon {
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .pass .status-icon { background: #c6f6e2; }
+    .fail .status-icon { background: #fee2e2; }
+    .warn .status-icon { background: #fef3c7; }
+    .status-icon svg { width: 24px; height: 24px; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+    .pass .status-icon svg { stroke: var(--pass-clr); }
+    .fail .status-icon svg { stroke: var(--fail-clr); }
+    .warn .status-icon svg { stroke: var(--warn-clr); }
+
+    .status-label {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.4rem;
+      font-weight: 800;
+    }
+    .pass .status-label { color: var(--pass-clr); }
+    .fail .status-label { color: var(--fail-clr); }
+    .warn .status-label { color: var(--warn-clr); }
+
+    .status-sub {
+      font-size: .88rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* Detail body */
+    .result-body {
+      background: var(--card);
+      border-radius: 0 0 var(--radius) var(--radius);
+      border: 1.5px solid var(--border);
+      border-top: none;
+      padding: 24px 28px;
+      box-shadow: var(--shadow);
+    }
+
+    /* Rule items */
+    .rules-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .rule-item {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      padding: 14px 16px;
+      border-radius: 9px;
+      border: 1px solid transparent;
+    }
+    .rule-item.pass { background: var(--pass-bg); border-color: var(--pass-brd); }
+    .rule-item.fail { background: var(--fail-bg); border-color: var(--fail-brd); }
+    .rule-item.warn { background: var(--warn-bg); border-color: var(--warn-brd); }
+    .rule-item.info { background: var(--ice);     border-color: #a8cef5; }
+
+    .rule-dot {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+      font-size: .7rem;
+      font-weight: 700;
+    }
+    .pass .rule-dot { background: var(--pass-clr); color: #fff; }
+    .fail .rule-dot { background: var(--fail-clr); color: #fff; }
+    .warn .rule-dot { background: var(--warn-clr); color: #fff; }
+    .info .rule-dot { background: var(--cobalt);   color: #fff; }
+
+    .rule-content {}
+    .rule-title {
+      font-weight: 600;
+      font-size: .92rem;
+      margin-bottom: 3px;
+    }
+    .pass .rule-title { color: var(--pass-clr); }
+    .fail .rule-title { color: var(--fail-clr); }
+    .warn .rule-title { color: var(--warn-clr); }
+    .info .rule-title { color: var(--cobalt); }
+
+    .rule-desc {
+      font-size: .86rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    /* Fix suggestion box */
+    .fix-box {
+      margin-top: 6px;
+      padding: 8px 12px;
+      background: rgba(255,255,255,.7);
+      border-left: 3px solid var(--fail-clr);
+      border-radius: 0 6px 6px 0;
+      font-size: .83rem;
+      color: var(--ink);
+      line-height: 1.5;
+    }
+    .fix-label {
+      font-weight: 700;
+      color: var(--fail-clr);
+      text-transform: uppercase;
+      font-size: .72rem;
+      letter-spacing: .05em;
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    /* Summary footer strip */
+    .result-footer {
+      margin-top: 20px;
+      padding: 12px 16px;
+      background: var(--bg);
+      border-radius: 8px;
+      font-size: .79rem;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      line-height: 1.6;
+    }
+    .result-footer strong { color: var(--ink); }
+
+    /* ─── Disclaimer ──────────────────────────────────────── */
+    .disclaimer {
+      margin-top: 28px;
+      padding: 14px 18px;
+      background: #fffdf0;
+      border: 1px solid #e8d87a;
+      border-radius: 9px;
+      font-size: .78rem;
+      color: #6b5900;
+      line-height: 1.6;
+      animation: fadeUp .5s ease both;
+    }
+    .disclaimer strong { color: #4a3d00; }
+
+    /* ─── Animations ──────────────────────────────────────── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    footer {
+      text-align: center;
+      padding: 20px;
+      font-size: .75rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════ HEADER ══════ -->
+<header>
+  <div class="header-inner">
+    <div class="logo-mark">
+      <!-- Shield + checkmark: auth/compliance icon -->
+      <svg viewBox="0 0 24 24">
+        <path d="M12 2L3 7v6c0 5.25 3.75 10.15 9 11.25C17.25 23.15 21 18.25 21 13V7L12 2z"/>
+        <polyline points="9 12 11 14 15 10"/>
+      </svg>
+    </div>
+    <div class="header-text">
+      <h1>Prior Auth Compliance Checker</h1>
+      <p>CMS-0057-F Rule Engine · No backend · For RCM education &amp; demo use</p>
+    </div>
+    <div class="cms-badge">CMS-0057-F</div>
+  </div>
+</header>
+
+<!-- ══════ MAIN ══════ -->
+<main>
+
+  <!-- ── Input Form ── -->
+  <div class="form-card">
+    <h2>Claim Details</h2>
+
+    <div class="fields-grid">
+
+      <!-- Drug Name -->
+      <div class="field">
+        <label for="drug-name">Drug / Treatment Name</label>
+        <input type="text" id="drug-name" placeholder="e.g. Humira, Dupixent, Ozempic" autocomplete="off" />
+      </div>
+
+      <!-- Diagnosis Code -->
+      <div class="field">
+        <label for="diag-code">ICD-10 Diagnosis Code</label>
+        <input type="text" id="diag-code" placeholder="e.g. M06.9, E11.65, J45.50" autocomplete="off" />
+      </div>
+
+      <!-- Patient Age -->
+      <div class="field">
+        <label for="patient-age">Patient Age (years)</label>
+        <input type="number" id="patient-age" placeholder="e.g. 34" min="0" max="130" />
+      </div>
+
+      <!-- Payer Name -->
+      <div class="field">
+        <label for="payer-name">Payer Name</label>
+        <div class="select-wrap">
+          <select id="payer-name">
+            <option value="">— Select payer —</option>
+            <option value="Medicare">Medicare</option>
+            <option value="Medicaid">Medicaid</option>
+            <option value="UnitedHealthcare">UnitedHealthcare</option>
+            <option value="BlueCross BlueShield">BlueCross BlueShield</option>
+            <option value="Aetna">Aetna</option>
+            <option value="Cigna">Cigna</option>
+            <option value="Humana">Humana</option>
+            <option value="Centene">Centene</option>
+          </select>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Check button -->
+    <button class="btn-check" onclick="runCheck()">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><polyline points="11 8 11 12 13 14"/></svg>
+      Run Compliance Check
+    </button>
+  </div>
+
+  <!-- ── Result panel (injected by JS) ── -->
+  <div id="result-panel"></div>
+
+  <!-- ── Disclaimer ── -->
+  <div class="disclaimer">
+    <strong>⚠ Educational / Demo Use Only.</strong> This tool applies simplified heuristics inspired by CMS-0057-F and common payer policies. It is <em>not</em> a substitute for official payer criteria, clinical judgment, or legal advice. Always verify authorization requirements directly with the payer.
+  </div>
+
+</main>
+
+<footer>Prior Auth Compliance Checker · CMS-0057-F Reference Tool · Ryan Moore Portfolio</footer>
+
+<!-- ══════ RULE ENGINE ══════ -->
+<script>
+  /*
+   * ─── CMS-0057-F Compliance Rule Engine ──────────────────────────────────────
+   *
+   * CMS-0057-F (Interoperability and Prior Authorization Final Rule, 2024) requires
+   * impacted payers to:
+   *   • Respond to PA requests within 7 days (non-urgent) / 72 hrs (urgent)
+   *   • Provide a specific denial reason
+   *   • Report PA metrics publicly
+   *
+   * This checker applies rule-based logic for common drug/diagnosis/age/payer combos
+   * that typically trigger prior auth requirements or known denial patterns.
+   * Each rule returns: { status: 'pass'|'fail'|'warn'|'info', title, desc, fix? }
+   */
+
+  // ─── Normalizer helpers ────────────────────────────────────────────────────
+  const norm  = s => (s || '').trim().toLowerCase();
+  const normD = s => (s || '').trim().toUpperCase().replace(/\s/g, '');
+
+  // ─── Drug lookup table ─────────────────────────────────────────────────────
+  // Maps normalized drug name fragments → drug profile
+  const DRUG_DB = {
+    humira:     { generic: 'Adalimumab', class: 'biologic', pa_required: true,
+                  min_age: 2, step_therapy: ['methotrexate','sulfasalazine'],
+                  indications: ['M06','M05','L40','K50','K51','M45'],
+                  notes: 'Biosimilar step-through may be required before brand Humira.' },
+    adalimumab: { generic: 'Adalimumab', class: 'biologic', pa_required: true,
+                  min_age: 2, step_therapy: ['methotrexate'],
+                  indications: ['M06','M05','L40','K50','K51'],
+                  notes: 'Check biosimilar availability; payers increasingly require biosimilar-first.' },
+    dupixent:   { generic: 'Dupilumab', class: 'biologic', pa_required: true,
+                  min_age: 6, step_therapy: ['topical corticosteroids','topical calcineurin inhibitors'],
+                  indications: ['L20','J45','J30'],
+                  notes: 'Step therapy with two topical agents required by most payers.' },
+    dupilumab:  { generic: 'Dupilumab', class: 'biologic', pa_required: true,
+                  min_age: 6, step_therapy: ['topical corticosteroids'],
+                  indications: ['L20','J45'],
+                  notes: 'Step therapy documentation required.' },
+    ozempic:    { generic: 'Semaglutide', class: 'GLP-1', pa_required: true,
+                  min_age: 18, step_therapy: ['metformin'],
+                  indications: ['E11'],
+                  notes: 'Indicated for T2DM; weight-loss use (obesity) requires Wegovy, not Ozempic.' },
+    semaglutide:{ generic: 'Semaglutide', class: 'GLP-1', pa_required: true,
+                  min_age: 18, step_therapy: ['metformin'],
+                  indications: ['E11','E66'],
+                  notes: 'Brand matters: Ozempic (DM), Wegovy (obesity). Verify correct indication.' },
+    wegovy:     { generic: 'Semaglutide (obesity)', class: 'GLP-1', pa_required: true,
+                  min_age: 12, step_therapy: ['dietary intervention','exercise program'],
+                  indications: ['E66','E65'],
+                  notes: 'Medicare does not cover Wegovy for obesity as of 2024. Medicaid coverage varies by state.' },
+    keytruda:   { generic: 'Pembrolizumab', class: 'immunotherapy', pa_required: true,
+                  min_age: 18, step_therapy: [],
+                  indications: ['C34','C43','C50','C18','C67'],
+                  notes: 'Requires biomarker/PD-L1 test documentation. Oncology PA often expedited.' },
+    pembrolizumab: { generic: 'Pembrolizumab', class: 'immunotherapy', pa_required: true,
+                  min_age: 18, step_therapy: [],
+                  indications: ['C34','C43'],
+                  notes: 'PD-L1 expression testing required for most indications.' },
+    enbrel:     { generic: 'Etanercept', class: 'biologic', pa_required: true,
+                  min_age: 4, step_therapy: ['methotrexate'],
+                  indications: ['M06','M05','L40','M45'],
+                  notes: 'Step therapy with conventional DMARDs typically required 3 months.' },
+    etanercept: { generic: 'Etanercept', class: 'biologic', pa_required: true,
+                  min_age: 4, step_therapy: ['methotrexate'],
+                  indications: ['M06','M05'],
+                  notes: 'Document DMARD failure before approval.' },
+    skyrizi:    { generic: 'Risankizumab', class: 'biologic', pa_required: true,
+                  min_age: 18, step_therapy: ['methotrexate','TNF inhibitor'],
+                  indications: ['L40','K50'],
+                  notes: 'Requires prior biologic failure documentation for most payers.' },
+    rinvoq:     { generic: 'Upadacitinib', class: 'JAK inhibitor', pa_required: true,
+                  min_age: 12, step_therapy: ['methotrexate','TNF inhibitor'],
+                  indications: ['M06','L20','K50'],
+                  notes: 'FDA black box warning (thrombosis/malignancy) requires attestation. BCBS/UHC require TNF-inhibitor failure.' },
+    xeljanz:    { generic: 'Tofacitinib', class: 'JAK inhibitor', pa_required: true,
+                  min_age: 2, step_therapy: ['methotrexate'],
+                  indications: ['M06','L40','K51'],
+                  notes: 'JAK inhibitor; black box warning attestation required. Many payers require biologic failure first.' },
+    eliquis:    { generic: 'Apixaban', class: 'anticoagulant', pa_required: false,
+                  min_age: 18, step_therapy: [],
+                  indications: ['I48','I26','Z96'],
+                  notes: 'PA not universally required but quantity limits apply. Generic warfarin trial may be required by some Medicaid plans.' },
+    'no-drug':  null,
+  };
+
+  // ─── Diagnosis code lookup ─────────────────────────────────────────────────
+  // Maps ICD-10 prefix → human-readable category
+  const DIAG_LABELS = {
+    M06: 'Rheumatoid Arthritis',        M05: 'Seropositive RA',
+    L40: 'Psoriasis',                   L20: 'Atopic Dermatitis / Eczema',
+    K50: "Crohn's Disease",             K51: 'Ulcerative Colitis',
+    M45: 'Ankylosing Spondylitis',      J45: 'Asthma',
+    J30: 'Allergic Rhinitis',           E11: 'Type 2 Diabetes',
+    E66: 'Obesity',                     E65: 'Localized adiposity',
+    C34: 'Lung Cancer',                 C43: 'Melanoma',
+    C50: 'Breast Cancer',               C18: 'Colon Cancer',
+    C67: 'Bladder Cancer',              I48: 'Atrial Fibrillation',
+    I26: 'Pulmonary Embolism',          Z96: 'Implanted cardiac device',
+    E10: 'Type 1 Diabetes',
+  };
+
+  // ─── Payer-specific PA rules ────────────────────────────────────────────────
+  const PAYER_RULES = {
+    'Medicare': {
+      notes: 'Medicare PA is limited to specific IPPS services & DME. CMS-0057-F mandates 72-hr urgent / 7-day standard turnaround.',
+      biologic_step: true,
+      require_cms_form: true,
+      glp1_obesity_excluded: true,   // Medicare does not cover GLP-1 for obesity alone
+    },
+    'Medicaid': {
+      notes: 'Medicaid PA criteria vary by state. Federal floor under CMS-0057-F applies to managed Medicaid plans as of 2026.',
+      biologic_step: true,
+      require_cms_form: false,
+      glp1_obesity_excluded: false,
+    },
+    'UnitedHealthcare': {
+      notes: 'UHC uses Gold Carding for high-approval providers. Biologics require Electronic PA via Availity.',
+      biologic_step: true,
+      jak_requires_biologic_fail: true,
+    },
+    'BlueCross BlueShield': {
+      notes: 'BCBS plans vary by state. Most require 90-day DMARD trial. PA submitted via iExchange or Availity.',
+      biologic_step: true,
+      jak_requires_biologic_fail: true,
+    },
+    'Aetna': {
+      notes: 'Aetna requires PA for most specialty biologics. Step therapy waiver available with documented contraindications.',
+      biologic_step: true,
+    },
+    'Cigna': {
+      notes: 'Cigna allows step therapy exceptions with prior treatment documentation. PA via myCigna portal.',
+      biologic_step: false, // slightly more lenient
+    },
+    'Humana': {
+      notes: 'Humana requires PA for all TNF inhibitors and JAK inhibitors. MA plans follow Medicare criteria.',
+      biologic_step: true,
+    },
+    'Centene': {
+      notes: 'Centene (Medicaid-focused). PA criteria managed at state subsidiary level. Generally strict step therapy.',
+      biologic_step: true,
+    },
+  };
+
+  // ─── Main check function ────────────────────────────────────────────────────
+  function runCheck() {
+    // 1. Collect inputs
+    const drugRaw  = document.getElementById('drug-name').value.trim();
+    const diagRaw  = document.getElementById('diag-code').value.trim();
+    const ageRaw   = document.getElementById('patient-age').value.trim();
+    const payerRaw = document.getElementById('payer-name').value;
+
+    // 2. Basic validation
+    if (!drugRaw || !diagRaw || !ageRaw || !payerRaw) {
+      showError('Please fill in all four fields before running the check.');
+      return;
+    }
+
+    const age     = parseInt(ageRaw, 10);
+    const diagUC  = normD(diagRaw);
+    const diagPre = diagUC.slice(0, 3);    // e.g. "M06"
+    const drugKey = norm(drugRaw);
+    const payer   = payerRaw;
+
+    // 3. Look up drug profile (partial match)
+    let drugProfile = null;
+    for (const [key, val] of Object.entries(DRUG_DB)) {
+      if (drugKey.includes(key) || key.includes(drugKey)) {
+        drugProfile = val;
+        break;
+      }
+    }
+
+    // 4. Payer profile
+    const payerProfile = PAYER_RULES[payer] || { notes: 'Payer-specific criteria not in database; verify manually.', biologic_step: true };
+
+    // 5. Run rules → collect result items
+    const items = [];
+
+    // ── Rule A: Drug recognition ──
+    if (!drugProfile) {
+      items.push({
+        status: 'info',
+        title: 'Drug not in reference database',
+        desc: `"${drugRaw}" is not in the built-in drug lookup. Standard PA evaluation will proceed based on drug class heuristics.`,
+      });
+    } else {
+      items.push({
+        status: 'pass',
+        title: `Drug Identified: ${drugProfile.generic}`,
+        desc: `Class: ${drugProfile.class}. PA Required by most payers: ${drugProfile.pa_required ? 'Yes' : 'Not typically'}.`,
+      });
+    }
+
+    // ── Rule B: Diagnosis code format ──
+    const diagValid = /^[A-Z]\d{2}(\.\d{1,4})?$/.test(diagUC);
+    if (!diagValid) {
+      items.push({
+        status: 'fail',
+        title: 'Invalid ICD-10 Code Format',
+        desc: `"${diagRaw}" does not match standard ICD-10 format (e.g. M06.9, E11.65).`,
+        fix: 'Correct the diagnosis code. Verify against the ICD-10-CM code set. Incorrect codes are a top-5 denial reason.',
+      });
+    } else {
+      const diagLabel = DIAG_LABELS[diagPre] || 'Unrecognized category — verify code';
+      items.push({
+        status: 'pass',
+        title: `Diagnosis Code Valid: ${diagUC}`,
+        desc: `Category: ${diagLabel}.`,
+      });
+    }
+
+    // ── Rule C: Drug–Diagnosis indication match ──
+    if (drugProfile && diagValid) {
+      const matched = drugProfile.indications.some(ind => diagUC.startsWith(ind));
+      if (!matched) {
+        items.push({
+          status: 'fail',
+          title: 'Diagnosis–Drug Indication Mismatch',
+          desc: `${drugProfile.generic} is not FDA-approved or commonly covered for ${diagUC} (${DIAG_LABELS[diagPre] || diagPre}).`,
+          fix: `Approved indications include: ${drugProfile.indications.join(', ')}. Submit a Letter of Medical Necessity with peer-reviewed literature supporting off-label use, or select an on-label therapy.`,
+        });
+      } else {
+        items.push({
+          status: 'pass',
+          title: 'Indication Match Confirmed',
+          desc: `${drugProfile.generic} has an approved/covered indication for ${DIAG_LABELS[diagPre] || diagPre}.`,
+        });
+      }
+    }
+
+    // ── Rule D: Patient age eligibility ──
+    if (isNaN(age) || age < 0 || age > 130) {
+      items.push({
+        status: 'fail',
+        title: 'Invalid Patient Age',
+        desc: 'Patient age must be a number between 0 and 130.',
+        fix: 'Correct the patient age field. Age mismatches cause eligibility denials.',
+      });
+    } else if (drugProfile && age < drugProfile.min_age) {
+      items.push({
+        status: 'fail',
+        title: `Age Eligibility Failure (Minimum: ${drugProfile.min_age})`,
+        desc: `${drugProfile.generic} is not approved for patients under age ${drugProfile.min_age}. Patient is ${age}.`,
+        fix: `Select a pediatric-approved alternative or submit with documentation supporting compassionate use / off-label justification and IRB/ethics board review if applicable.`,
+      });
+    } else {
+      items.push({
+        status: 'pass',
+        title: `Age Eligibility Met (${age} years)`,
+        desc: drugProfile
+          ? `Patient meets minimum age requirement of ${drugProfile.min_age} for ${drugProfile.generic}.`
+          : 'No age restriction flagged for this drug.',
+      });
+    }
+
+    // ── Rule E: Step therapy requirement ──
+    if (drugProfile && drugProfile.step_therapy.length > 0) {
+      items.push({
+        status: 'warn',
+        title: 'Step Therapy Documentation Required',
+        desc: `${payer} and most payers require documented trial and failure of: ${drugProfile.step_therapy.join(', ')}.`,
+        fix: `Include dates, dosages, and clinical outcomes for each prior therapy in the PA submission. CMS-0057-F prohibits payers from ignoring documented step therapy completion — cite this in appeals if denied.`,
+      });
+    }
+
+    // ── Rule F: Medicare GLP-1 obesity exclusion ──
+    if (drugProfile && payer === 'Medicare' && payerProfile.glp1_obesity_excluded) {
+      const isGlp1    = drugProfile.class === 'GLP-1';
+      const isObesity = diagUC.startsWith('E66') || diagUC.startsWith('E65');
+      if (isGlp1 && isObesity) {
+        items.push({
+          status: 'fail',
+          title: 'Medicare Exclusion: GLP-1 for Obesity',
+          desc: `Medicare Part D does not cover GLP-1 agonists (e.g., Wegovy, Ozempic) when indicated solely for obesity/weight loss as of 2024.`,
+          fix: `If the patient also has Type 2 Diabetes (E11.x), submit with the diabetes diagnosis as primary. Alternatively, explore patient assistance programs or state-funded coverage. Monitor CMS for the ongoing Treat and Reduce Obesity Act updates.`,
+        });
+      }
+    }
+
+    // ── Rule G: JAK inhibitor extra scrutiny ──
+    if (drugProfile && drugProfile.class === 'JAK inhibitor') {
+      items.push({
+        status: 'warn',
+        title: 'JAK Inhibitor — Black Box Warning Attestation Required',
+        desc: 'FDA requires prescriber attestation for thrombosis, malignancy, and cardiovascular risks. Many payers also require biologic failure before approving JAK inhibitors.',
+        fix: 'Include FDA REMS attestation and prior biologic failure documentation (TNF inhibitor preferred). UHC and BCBS explicitly require this.',
+      });
+    }
+
+    // ── Rule H: Biologic step therapy — payer-specific ──
+    if (drugProfile && drugProfile.class === 'biologic' && payerProfile.biologic_step) {
+      items.push({
+        status: 'warn',
+        title: `${payer}: Biologic Step Therapy Enforced`,
+        desc: `${payer} requires documented failure of conventional therapy before approving specialty biologics.`,
+        fix: 'Attach treatment history including conventional therapy start/stop dates, doses, and reason for discontinuation (e.g., inadequate response, AE). Under CMS-0057-F, step therapy exceptions must be acknowledged within the standard turnaround windows.',
+      });
+    }
+
+    // ── Rule I: CMS-0057-F PA timeline reminder ──
+    if (['Medicare','Medicaid'].includes(payer)) {
+      items.push({
+        status: 'info',
+        title: 'CMS-0057-F Timeline Rights',
+        desc: `Under CMS-0057-F, ${payer} plans must respond within 72 hours (urgent) or 7 calendar days (standard) for PA requests. Denial must include a specific, actionable reason.`,
+      });
+    }
+
+    // ── Rule J: Payer-specific notes ──
+    items.push({
+      status: 'info',
+      title: `${payer} — Policy Notes`,
+      desc: payerProfile.notes,
+    });
+
+    // 6. Compute overall verdict
+    const hasFail = items.some(i => i.status === 'fail');
+    const hasWarn = items.some(i => i.status === 'warn');
+    const overall = hasFail ? 'fail' : hasWarn ? 'warn' : 'pass';
+
+    const VERDICT = {
+      pass: { label: '✓ Likely Approvable', sub: 'No critical compliance issues detected. Review warnings before submitting.' },
+      warn: { label: '⚠ Review Required',   sub: 'Warnings found. Resolve documentation gaps before submission to reduce denial risk.' },
+      fail: { label: '✗ Likely to Deny',    sub: 'One or more critical issues detected. Correct these before submitting the PA.' },
+    };
+
+    // 7. Render
+    const failCount = items.filter(i => i.status === 'fail').length;
+    const warnCount = items.filter(i => i.status === 'warn').length;
+    const passCount = items.filter(i => i.status === 'pass').length;
+
+    const iconSVG = {
+      pass: `<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="2.5" width="26" height="26"><polyline points="20 6 9 17 4 12"/></svg>`,
+      warn: `<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="2.5" width="26" height="26"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+      fail: `<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="2.5" width="26" height="26"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`,
+    };
+
+    const ruleSymbols = { pass: '✓', fail: '✗', warn: '!', info: 'i' };
+
+    const rulesHTML = items.map(item => `
+      <div class="rule-item ${item.status}">
+        <div class="rule-dot">${ruleSymbols[item.status]}</div>
+        <div class="rule-content">
+          <div class="rule-title">${item.title}</div>
+          <div class="rule-desc">${item.desc}</div>
+          ${item.fix ? `
+            <div class="fix-box">
+              <span class="fix-label">Recommended Fix</span>
+              ${item.fix}
+            </div>` : ''}
+        </div>
+      </div>
+    `).join('');
+
+    document.getElementById('result-panel').innerHTML = `
+      <div>
+        <div class="status-banner ${overall}">
+          <div class="status-icon">${iconSVG[overall]}</div>
+          <div>
+            <div class="status-label">${VERDICT[overall].label}</div>
+            <div class="status-sub">${VERDICT[overall].sub}</div>
+          </div>
+        </div>
+        <div class="result-body">
+          <div class="rules-list">${rulesHTML}</div>
+          <div class="result-footer">
+            <strong>Summary:</strong> ${passCount} check(s) passed &nbsp;·&nbsp;
+            ${warnCount} warning(s) &nbsp;·&nbsp; ${failCount} failure(s) &nbsp;—&nbsp;
+            Drug: <strong>${drugRaw}</strong> &nbsp;|&nbsp;
+            Dx: <strong>${diagRaw.toUpperCase()}</strong> &nbsp;|&nbsp;
+            Age: <strong>${ageRaw}</strong> &nbsp;|&nbsp;
+            Payer: <strong>${payer}</strong>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Scroll to result
+    document.getElementById('result-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ─── Show validation error ─────────────────────────────────────────────────
+  function showError(msg) {
+    document.getElementById('result-panel').innerHTML = `
+      <div class="status-banner fail" style="border-radius:var(--radius);border:1.5px solid var(--fail-brd);">
+        <div class="status-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--fail-clr)" stroke-width="2.4" stroke-linecap="round" width="24" height="24">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <div>
+          <div class="status-label" style="font-size:1rem">Input Error</div>
+          <div class="status-sub">${msg}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ─── Allow Enter key to trigger check ─────────────────────────────────────
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter') runCheck();
+  });
+</script>
+</body>
+</html>

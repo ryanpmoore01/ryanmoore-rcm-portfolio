@@ -5,11 +5,11 @@ Interactive tools and artifacts built for revenue cycle management and prior aut
 ## Available Tools
 - **Denial Trend Dashboard**  
   Visualizes top denial reasons by payer using Chart.js.  
-  [Live Demo](https://ryanmoore01.github.io/ryanmoore-rcm-portfolio/denial-trend-dashboard.html)
+  [Live Demo](rcm-denial-trend-dashboard-ryan.html)
 
 - **Prior Auth Compliance Checker**  
   Checks PA requests against CMS rules — pass/fail + fixes.  
-  [Live Demo](https://ryanmoore01.github.io/ryanmoore-rcm-portfolio/pa-compliance-checker-ryan.html)
+  [Live Demo](pa-compliance-checker-ryan.html)
 
 More tools coming soon (e.g., denial appeal recommender, claims denial predictor).
 
